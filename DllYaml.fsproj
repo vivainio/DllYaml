@@ -9,7 +9,7 @@
     <Authors>vivainio</Authors>
     <Company />
     <Copyright>Ville M. Vainio</Copyright>
-    <PackageProjectUrl></PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/vivainio/DllYaml</PackageProjectUrl>
     <PackageLicenseUrl>/blob/master/LICENSE</PackageLicenseUrl>
   </PropertyGroup>
 
