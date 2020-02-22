@@ -2,7 +2,7 @@
 
 
   <PropertyGroup>
-    <ToolCommandName>DllYaml</ToolCommandName>
+    <ToolCommandName>dllyaml</ToolCommandName>
     <PackAsTool>True</PackAsTool>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
