@@ -42,7 +42,14 @@ let kindInd (typ: TypeDefinition) =
 
 
 let oneAttributeToString (attr: CustomAttribute) =
-    if attr.ConstructorArguments.Count = 0 then
+    
+    let ctorArgs =
+        try
+             attr.ConstructorArguments |> Array.ofSeq
+         with
+         | _ -> [||]
+    
+    if ctorArgs.Length = 0 then
         attr.AttributeType.Name
      else
          sprintf "%s(\"%s\")" attr.AttributeType.Name
