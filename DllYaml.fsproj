@@ -1,8 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+
   <PropertyGroup>
+    <ToolCommandName>DllYaml</ToolCommandName>
+    <PackAsTool>True</PackAsTool>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <Authors>vivainio</Authors>
+    <Company />
+    <Copyright>Ville M. Vainio</Copyright>
+    <PackageProjectUrl></PackageProjectUrl>
+    <PackageLicenseUrl>/blob/master/LICENSE</PackageLicenseUrl>
   </PropertyGroup>
 
   <ItemGroup>
