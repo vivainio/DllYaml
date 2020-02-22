@@ -11,21 +11,31 @@ let simplifyCollectionName name =
     | "ICollection`1" -> "coll"
     | "ObservableCollection`1" -> "ocoll"
     | "Task`1" -> "task"
+    | "List`1" -> "list"
+    | "Dictionary`2" -> "dict"
     | _ -> name
-let rec simplifyTypeName (t: TypeReference) =
-    if t.IsGenericInstance then
-        let git = t :?> GenericInstanceType
-        (simplifyTypeName git.GenericArguments.[0]) + " " + (simplifyCollectionName t.Name)
     
-        
-    else
-       
-    t.FullName.Replace("System.", "")
-     
+    
+let rec simplifyGenericTypeArgs (args: TypeReference seq) =
+    args
+    |> Seq.map (fun a -> simplifyTypeName a)
+    |> String.concat ", "
+
+and simplifyTypeName (t: TypeReference) =
+
+    match t with
+    
+    | _ when t.IsGenericInstance -> 
+        let git = t :?> GenericInstanceType
+        (simplifyGenericTypeArgs git.GenericArguments) + " " + (simplifyCollectionName t.Name)
+    | _ when t.IsArray ->
+        let arr = t :?> ArrayType
+        simplifyTypeName arr.ElementType + " array"
+    | _ -> t.FullName.Replace("System.", "")
      
 let kindInd (typ: TypeDefinition) =
     match typ with
-    | _ when typ.IsEnum -> "enum"
+    | _ when typ.IsInterface -> "interface"
     | _ when typ.IsAbstract -> "abstract"
     | _ -> ""
     
@@ -42,7 +52,7 @@ let oneAttributeToString (attr: CustomAttribute) =
         
 let attributesToString (attrs: CustomAttribute seq) =
     String.concat " " (attrs |> Seq.map oneAttributeToString)
-    
+
 let parseAssembly (f: string) =
     
     let a = AssemblyDefinition.ReadAssembly (f)
@@ -76,15 +86,28 @@ let parseAssembly (f: string) =
         if t.HasCustomAttributes then do
             printfn "%s.attr: %s" (nest 1) (attributesToString t.CustomAttributes)
         
-            
-        for p in t.Properties do
-            printfn "%s%s: %s" (nest 1) p.Name (simplifyTypeName p.PropertyType)
+        if t.HasProperties then do
+            printfn "%s.prop:" (nest 1)            
+            for p in t.Properties do           
+                printfn "%s%s: %s" (nest 2) p.Name (simplifyTypeName p.PropertyType)
 
-                
-        if kindText = "enum" then do
-            for a in (t.Fields |> Seq.filter (fun f -> f.Constant <> null)) do 
-                printfn "%s%s: %s" (nest 1) a.Name (a.Constant.ToString())
-    
+        
+        let fieldSpec (f: FieldDefinition) =
+            match f with
+            | _ when f.HasConstant -> ("const", f.Name, f.Constant.ToString())
+            | _ when f.IsStatic -> ("static", f.Name, simplifyTypeName f.FieldType)
+            | _ when f.IsPublic -> ("public", f.Name, simplifyTypeName f.FieldType)
+            | _ when f.IsPrivate -> ("private", f.Name, simplifyTypeName f.FieldType)
+
+            | _ -> ("other", f.Name, f.ToString())
+                  
+        let groupedFields = t.Fields |> Seq.map fieldSpec |> Seq.groupBy (fun (a,_,_) -> a)
+            
+        for (g, lst) in groupedFields do
+            printfn "%s.%s:" (nest 1) g
+            for (_, n,v) in lst do
+                printfn "%s%s: %s" (nest 2) n v
+        
         let reportMethod (mi: MethodDefinition) =
             if mi.IsGetter || mi.IsSetter || mi.IsConstructor then false else true
            
@@ -93,7 +116,8 @@ let parseAssembly (f: string) =
             printfn "%s.m:" (nest 1)
             for m in methodsToReport do
                 printfn "%s - %s %s" (nest 2) m.Name (simplifyTypeName m.ReturnType) 
-                
+
+                       
                 
 
 [<EntryPoint>]
