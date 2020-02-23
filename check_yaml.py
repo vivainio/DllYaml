@@ -3,7 +3,8 @@ import sys
 import pprint
 
 def check_file(fname):
-    docs = yaml.load_all(open(fname), Loader = yaml.FullLoader)
+    f = open(fname)
+    docs = yaml.load_all(f, Loader = yaml.FullLoader)
     
 
     typecount = 0

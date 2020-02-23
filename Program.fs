@@ -1,6 +1,8 @@
 ﻿// Learn more about F# at http://fsharp.org
 
+open System
 open System.IO
+open System.Text
 open Mono.Cecil
 
 let simplifyCollectionName name =
@@ -83,7 +85,7 @@ let yamlKey (k: string) =
     
 
 let badChar c =
-    c = '-' || c = ',' || c = '|' || c = ';' || c = ':' || c = '?'   
+    c = '-' || c = ',' || c = '|' || c = ';' || c = ':' || c = '?' || (int c) > 127
     
     
 let firstLast (st: string) =
@@ -99,12 +101,14 @@ let yamlString (s: string) =
                        || s.Contains("`") || s.Contains("@")
                        || badChar firstChar || badChar lastChar
     if needsQuoting then
-     sprintf "'%s'"
-       (s.Replace("'", "''") )
-     else s 
+        sprintf "'%s'"
+            (s.Replace("'", "''") )
+        else s 
 
-let parseAssembly (f: string) =
-    
+let toAscii (s:string) =
+    s |> Encoding.ASCII.GetBytes |> Encoding.ASCII.GetString
+
+let parseAssembly (f: string) =    
     let a = AssemblyDefinition.ReadAssembly (f)
     let types = a.MainModule.Types |> Seq.sortBy (fun t -> t.FullName)
     
@@ -124,7 +128,8 @@ let parseAssembly (f: string) =
 
         let emitRaw lvl (s: string) =
             if stringHasUnprintableChars s then
-                raise (System.BadImageFormatException("Obfuscated names found: "+s))
+                printfn "%s%s" (nest lvl) (toAscii s)
+                // raise (System.BadImageFormatException("Obfuscated names found: "+s))
             else   
                 printfn "%s%s" (nest lvl) s
 
@@ -161,15 +166,11 @@ let parseAssembly (f: string) =
         let fieldSpec (f: FieldDefinition) =
             match f with
             | _ when f.IsPrivate -> ("private", f.Name, simplifyTypeName f.FieldType)
-            | _ when f.HasConstant -> ("const", f.Name,
-                                       match f.Constant with
-                                       | :? string as s -> yamlString s
-                                       | :? char as c -> c.ToString() |> yamlString
-                                       | c -> c.ToString())
+            | _ when f.HasConstant -> ("const", f.Name, f.Constant.ToString() |> toAscii |> yamlString)                                  
             | _ when f.IsStatic -> ("static", f.Name, simplifyTypeName f.FieldType)
             | _ when f.IsPublic -> ("public", f.Name, simplifyTypeName f.FieldType)
             | _ ->
-                ("other", f.Name, f.ToString())
+                ("other", f.Name, f.ToString() |> yamlString)
                   
         let groupedFields =
             t.Fields
@@ -202,7 +203,7 @@ let emitAssembliesFromFiles fileNames =
         try
             parseAssembly f
         with
-            | :? System.BadImageFormatException -> printfn "# Bad assembly: %s" f
+            | :? System.BadImageFormatException as ex -> printfn "# Bad assembly: %s %A" f ex
              
         printfn "\n---\n"
 
