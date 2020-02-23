@@ -8,41 +8,54 @@ let simplifyCollectionName name =
     | "Nullable`1" -> "?"
     | "IEnumerable`1" -> "seq"
     | "ICollection`1" -> "coll"
-    | "ObservableCollection`1" -> "ocoll"
+    | "ObservableCollection`1" -> "coll"
     | "Task`1" -> "task"
     | "List`1" -> "list"
+    | "IList`1" -> "list"    
     | "Dictionary`2" -> "dict"
+    | "IDictionary`2" -> "dict"
+    | "Tuple`2" -> "tuple"
+    | "ValueTuple`2" -> "tuple"
+
     | "RepeatedField`1" -> "repeated"
     | _ -> name
     
     
 let rec simplifyGenericTypeArgs (args: TypeReference seq) =
-    args
-    |> Seq.map (fun a -> simplifyTypeName a)
-    |> String.concat ", "
+    let mapped = args
+                 |> Seq.map (fun a -> simplifyTypeName a)
+    let concatted = String.concat "," mapped
+    match Seq.length mapped with
+    | 0 -> ""
+    | 1 -> concatted
+    | _ -> "(" + concatted + ")"
+    
 
 and simplifyTypeName (t: TypeReference) =
 
-    match t with
-    | _ when t.Name = "Void" -> "()"
+    match t.Name with
+    | "Void" -> "()"
+    | "Object" -> "obj"
+    | "String" -> "str"
+    | "Boolean" -> "bool"
+    | "Int32" -> "int"
+    | "Int64" -> "int64"
     | _ when t.IsGenericInstance -> 
         let git = t :?> GenericInstanceType
         (simplifyGenericTypeArgs git.GenericArguments) + " " + (simplifyCollectionName t.Name)
     | _ when t.IsArray ->
         let arr = t :?> ArrayType
         simplifyTypeName arr.ElementType + " array"
-    | _ -> t.FullName.Replace("System.", "")
+    | name when t.FullName.StartsWith("System.") -> name
+    | _ -> t.FullName
      
 let kindInd (typ: TypeDefinition) =
     match typ with
     | _ when typ.IsInterface -> "interface"
     | _ when typ.IsAbstract -> "abstract"
     | _ -> ""
-    
 
-
-let oneAttributeToString (attr: CustomAttribute) =
-    
+let oneAttributeToString (attr: CustomAttribute) =    
     let ctorArgs =
         try
              attr.ConstructorArguments |> Array.ofSeq
@@ -60,6 +73,36 @@ let oneAttributeToString (attr: CustomAttribute) =
 let attributesToString (attrs: CustomAttribute seq) =
     String.concat " " (attrs |> Seq.map oneAttributeToString)
 
+let stringHasUnprintableChars (s: string) =
+    let smallest = s.ToCharArray() |> Array.min
+    (int) smallest < 0x20
+
+
+let yamlKey (k: string) =
+    if k.StartsWith("|") then ("?" + k) else k
+    
+
+let badChar c =
+    c = '-' || c = ',' || c = '|' || c = ';' || c = ':' || c = '?'   
+    
+    
+let firstLast (st: string) =
+    let s = st.Trim()
+    match s.Length with
+        | 0 -> '_', '_'
+        | 1 -> s.[0], s.[0]
+        | len -> s.[0], s.[len - 1]
+    
+let yamlString (s: string) =
+    let firstChar, lastChar = firstLast s
+    let needsQuoting = s.Contains("%") || s.Contains(": ") || s.Contains("{") || s.Contains("\"") || s.Contains("'")
+                       || s.Contains("`") || s.Contains("@")
+                       || badChar firstChar || badChar lastChar
+    if needsQuoting then
+     sprintf "'%s'"
+       (s.Replace("'", "''") )
+     else s 
+
 let parseAssembly (f: string) =
     
     let a = AssemblyDefinition.ReadAssembly (f)
@@ -75,21 +118,26 @@ let parseAssembly (f: string) =
         printfn "%s.attr:" (nest 1)
         for attr in a.MainModule.Assembly.CustomAttributes do
             printfn "%s- %s" (nest 2) (oneAttributeToString attr)
-
-        
+    
     let emitOneType t =         
         let kindText = kindInd t
 
         let emitRaw lvl (s: string) =
-            printfn "%s%s" (nest lvl) s
+            if stringHasUnprintableChars s then
+                raise (System.BadImageFormatException("Obfuscated names found: "+s))
+            else   
+                printfn "%s%s" (nest lvl) s
 
+        let nsToAbreviate = if t.Namespace.Length > 10 then t.Namespace + "." else ""
+        
         let emit lvl (s: string) =
-            s.Replace(t.Namespace + ".", "NS.") |> emitRaw lvl
+            if nsToAbreviate <> "" then s.Replace(nsToAbreviate, "NS.") else s
+            |> emitRaw lvl
             
         let emitSection key =
             sprintf ".%s:" key |> emit 1
                             
-        sprintf "%s:" t.FullName |> emitRaw 0
+        sprintf "%s:" (yamlKey t.FullName) |> emitRaw 0
         sprintf ".ns: %s" t.Namespace |> emitRaw 1
         if kindText <> "" then do
             sprintf ".t: %s" kindText |> emit 1
@@ -107,7 +155,7 @@ let parseAssembly (f: string) =
         if t.HasProperties then do
             emitSection "prop"
             for p in t.Properties do           
-                sprintf "%s: %s" p.Name (simplifyTypeName p.PropertyType) |> emit 2
+                sprintf "%s: %s" (yamlKey p.Name) (simplifyTypeName p.PropertyType) |> emit 2
 
         
         let fieldSpec (f: FieldDefinition) =
@@ -115,8 +163,8 @@ let parseAssembly (f: string) =
             | _ when f.IsPrivate -> ("private", f.Name, simplifyTypeName f.FieldType)
             | _ when f.HasConstant -> ("const", f.Name,
                                        match f.Constant with
-                                       | :? string as s -> sprintf "\"%s\"" (s.Replace("\\", "\\\\"))
-                                       | :? char as c -> sprintf "'%c'" c
+                                       | :? string as s -> yamlString s
+                                       | :? char as c -> c.ToString() |> yamlString
                                        | c -> c.ToString())
             | _ when f.IsStatic -> ("static", f.Name, simplifyTypeName f.FieldType)
             | _ when f.IsPublic -> ("public", f.Name, simplifyTypeName f.FieldType)
@@ -132,16 +180,18 @@ let parseAssembly (f: string) =
         for (g, lst) in groupedFields do
             emitSection g
             for (_, n,v) in lst do
-                sprintf "%s: %s" n v |> emit 2
+                sprintf "%s: %s" (yamlKey n) v |> emit 2
         
         let reportMethod (mi: MethodDefinition) =
             if mi.IsGetter || mi.IsSetter || mi.IsConstructor then false else true
            
         let methodsToReport = t.Methods |> Seq.filter reportMethod |> Array.ofSeq
+        let emitListItem lvl li =
+            "- " + (yamlString li) |> emit lvl
         if not (Array.isEmpty methodsToReport) then do
             emitSection "methods" 
             for m in methodsToReport do
-                sprintf "- %s -> %s" m.Name (simplifyTypeName m.ReturnType) |> emit 2 
+                sprintf "%s -> %s" m.Name (simplifyTypeName m.ReturnType) |> emitListItem 2 
 
     emitAssemblyMetadata a
     for t in types do
@@ -155,11 +205,9 @@ let emitAssembliesFromFiles fileNames =
             | :? System.BadImageFormatException -> printfn "# Bad assembly: %s" f
              
         printfn "\n---\n"
-    
 
 [<EntryPoint>]
-let main argv =
-    
+let main argv =    
     let files = argv
     let allFiles = 
         files
