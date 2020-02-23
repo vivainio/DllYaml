@@ -18,8 +18,11 @@ let simplifyCollectionName name =
     | "IDictionary`2" -> "dict"
     | "Tuple`2" -> "tuple"
     | "ValueTuple`2" -> "tuple"
-
+    | name when name.StartsWith("Func`") -> "func"
+    | name when name.StartsWith("Action`") -> "action"
+    
     | "RepeatedField`1" -> "repeated"
+    | name when name.Contains("`") -> name.Split('`').[0]
     | _ -> name
     
     
