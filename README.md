@@ -4,6 +4,13 @@ Dump dotnet assembly contents in parseable and readable YAML format
 Intended for easy parsing. Can be used to implement tools that produce
 content by reflecting on the binaries of existing code (e.g. protobuf and DTO generators).
 
+## Installation 
+
+```
+$ dotnet tool install DllYaml -g
+$ dllyaml myapp.dll mylib.dll > output.yaml
+```
+
 Example ouput from running against mono.cecil:
 
 ```yaml
