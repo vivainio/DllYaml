@@ -125,6 +125,10 @@ let parseAssembly (f: string) =
         printfn "%s.attr:" (nest 1)
         for attr in a.MainModule.Assembly.CustomAttributes do
             printfn "%s- %s" (nest 2) (oneAttributeToString attr)
+        
+        printfn "%s.ref" (nest 1)    
+        for dep in a.MainModule.AssemblyReferences do
+            printfn "%s-: %s %s" (nest 2) dep.Name (dep.Version.ToString())
     
     let emitOneType t =         
         let kindText = kindInd t
