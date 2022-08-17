@@ -8,7 +8,7 @@ content by reflecting on the binaries of existing code (e.g. protobuf and DTO ge
 
 ```
 $ dotnet tool install DllYaml -g
-$ dllyaml myapp.dll mylib.dll > output.yaml
+$ dllyaml --files myapp.dll mylib.dll > output.yaml
 ```
 
 Example ouput from running against mono.cecil:
